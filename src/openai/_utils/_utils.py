@@ -1,28 +1,18 @@
 from __future__ import annotations
 
+import functools
+import inspect
 import os
 import re
-import inspect
-import functools
-from typing import (
-    TYPE_CHECKING,
-    Any,
-    Tuple,
-    Mapping,
-    TypeVar,
-    Callable,
-    Iterable,
-    Sequence,
-    cast,
-    overload,
-)
-from pathlib import Path
 from datetime import date, datetime
-from typing_extensions import TypeGuard
+from pathlib import Path
+from typing import (TYPE_CHECKING, Any, Callable, Iterable, Mapping, Sequence,
+                    Tuple, TypeVar, cast, overload)
 
 import sniffio
+from typing_extensions import TypeGuard
 
-from .._types import Omit, NotGiven, FileTypes, HeadersLike
+from .._types import FileTypes, HeadersLike, NotGiven, Omit
 
 _T = TypeVar("_T")
 _TupleT = TypeVar("_TupleT", bound=Tuple[object, ...])
@@ -31,7 +21,7 @@ _SequenceT = TypeVar("_SequenceT", bound=Sequence[object])
 CallableT = TypeVar("CallableT", bound=Callable[..., Any])
 
 if TYPE_CHECKING:
-    from ..lib.azure import AzureOpenAI, AsyncAzureOpenAI
+    from ..lib.azure import AsyncAzureOpenAI, AzureOpenAI
 
 
 def flatten(t: Iterable[Iterable[_T]]) -> list[_T]:
