@@ -131,7 +131,9 @@ def _extract_items(
 
 
 def is_given(obj: _T | NotGiven | Omit) -> TypeGuard[_T]:
-    return not isinstance(obj, NotGiven) and not isinstance(obj, Omit)
+    # Check type equality directly for efficiency, assuming NotGiven and Omit are singleton classes by convention.
+    obj_type = type(obj)
+    return obj_type is not NotGiven and obj_type is not Omit
 
 
 # Type safe methods for narrowing types with TypeVars.
