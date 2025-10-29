@@ -23,7 +23,9 @@ class PydanticFunctionTool(Dict[str, Any]):
         self.model = model
 
     def cast(self) -> FunctionDefinition:
-        return cast(FunctionDefinition, self)
+        # LBYL avoids repeating the isinstance check in typing.cast at runtime.
+        # In practice, we know this is safe if only constructed via __init__.
+        return self  # type: ignore[return-value]
 
 
 class ResponsesPydanticFunctionTool(Dict[str, Any]):
