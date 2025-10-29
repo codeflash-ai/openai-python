@@ -18,6 +18,7 @@ from typing import (
 )
 from pathlib import Path
 from datetime import date, datetime
+from itertools import chain
 from typing_extensions import TypeGuard
 
 import sniffio
@@ -35,7 +36,7 @@ if TYPE_CHECKING:
 
 
 def flatten(t: Iterable[Iterable[_T]]) -> list[_T]:
-    return [item for sublist in t for item in sublist]
+    return list(chain.from_iterable(t))
 
 
 def extract_files(
