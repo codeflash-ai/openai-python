@@ -280,16 +280,22 @@ class _AmbiguousModuleClientUsageError(OpenAIError):
 
 
 def _has_openai_credentials() -> bool:
-    return _os.environ.get("OPENAI_API_KEY") is not None
+    # Use faster local variable for get; allows for optimization in tight loops
+    env_get = _os.environ.get
+    return env_get("OPENAI_API_KEY") is not None
 
 
 def _has_azure_credentials() -> bool:
-    return azure_endpoint is not None or _os.environ.get("AZURE_OPENAI_API_KEY") is not None
+    # Direct global lookup is fine, since this function is only called a few times
+    env_get = _os.environ.get
+    # Note: azure_endpoint, as in original, assumed present in global scope.
+    return azure_endpoint is not None or env_get("AZURE_OPENAI_API_KEY") is not None
 
 
 def _has_azure_ad_credentials() -> bool:
+    env_get = _os.environ.get
     return (
-        _os.environ.get("AZURE_OPENAI_AD_TOKEN") is not None
+        env_get("AZURE_OPENAI_AD_TOKEN") is not None
         or azure_ad_token is not None
         or azure_ad_token_provider is not None
     )
@@ -301,53 +307,59 @@ _client: OpenAI | None = None
 def _load_client() -> OpenAI:  # type: ignore[reportUnusedFunction]
     global _client
 
-    if _client is None:
-        global api_type, azure_endpoint, azure_ad_token, api_version
+    if _client is not None:
+        return _client
 
-        if azure_endpoint is None:
-            azure_endpoint = _os.environ.get("AZURE_OPENAI_ENDPOINT")
+    global api_type, azure_endpoint, azure_ad_token, api_version
 
-        if azure_ad_token is None:
-            azure_ad_token = _os.environ.get("AZURE_OPENAI_AD_TOKEN")
+    env_get = _os.environ.get  # cache for micro-optimization
 
-        if api_version is None:
-            api_version = _os.environ.get("OPENAI_API_VERSION")
+    # Only fetch from environment if not already set
+    if azure_endpoint is None:
+        azure_endpoint = env_get("AZURE_OPENAI_ENDPOINT")
 
-        if api_type is None:
-            has_openai = _has_openai_credentials()
-            has_azure = _has_azure_credentials()
-            has_azure_ad = _has_azure_ad_credentials()
+    if azure_ad_token is None:
+        azure_ad_token = env_get("AZURE_OPENAI_AD_TOKEN")
 
-            if has_openai and (has_azure or has_azure_ad):
-                raise _AmbiguousModuleClientUsageError()
+    if api_version is None:
+        api_version = env_get("OPENAI_API_VERSION")
 
-            if (azure_ad_token is not None or azure_ad_token_provider is not None) and _os.environ.get(
-                "AZURE_OPENAI_API_KEY"
-            ) is not None:
-                raise _AmbiguousModuleClientUsageError()
+    if api_type is None:
+        has_openai = _has_openai_credentials()
+        has_azure = _has_azure_credentials()
+        has_azure_ad = _has_azure_ad_credentials()
 
-            if has_azure or has_azure_ad:
-                api_type = "azure"
-            else:
-                api_type = "openai"
+        # Early exit for ambiguous module usage, avoid deeper stack
+        if has_openai and (has_azure or has_azure_ad):
+            raise _AmbiguousModuleClientUsageError()
 
-        if api_type == "azure":
-            _client = _AzureModuleClient(  # type: ignore
-                api_version=api_version,
-                azure_endpoint=azure_endpoint,
-                api_key=api_key,
-                azure_ad_token=azure_ad_token,
-                azure_ad_token_provider=azure_ad_token_provider,
-                organization=organization,
-                base_url=base_url,
-                timeout=timeout,
-                max_retries=max_retries,
-                default_headers=default_headers,
-                default_query=default_query,
-                http_client=http_client,
-            )
-            return _client
+        if (azure_ad_token is not None or azure_ad_token_provider is not None) and env_get(
+            "AZURE_OPENAI_API_KEY"
+        ) is not None:
+            raise _AmbiguousModuleClientUsageError()
 
+        if has_azure or has_azure_ad:
+            api_type = "azure"
+        else:
+            api_type = "openai"
+
+    # Use direct assignment after branch selection (as in original)
+    if api_type == "azure":
+        _client = _AzureModuleClient(  # type: ignore
+            api_version=api_version,
+            azure_endpoint=azure_endpoint,
+            api_key=api_key,
+            azure_ad_token=azure_ad_token,
+            azure_ad_token_provider=azure_ad_token_provider,
+            organization=organization,
+            base_url=base_url,
+            timeout=timeout,
+            max_retries=max_retries,
+            default_headers=default_headers,
+            default_query=default_query,
+            http_client=http_client,
+        )
+    else:
         _client = _ModuleClient(
             api_key=api_key,
             organization=organization,
@@ -360,8 +372,6 @@ def _load_client() -> OpenAI:  # type: ignore[reportUnusedFunction]
             default_query=default_query,
             http_client=http_client,
         )
-        return _client
-
     return _client
 
 
