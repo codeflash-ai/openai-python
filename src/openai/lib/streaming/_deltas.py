@@ -1,10 +1,16 @@
 from __future__ import annotations
 
-from ..._utils import is_dict, is_list
-
 
 def accumulate_delta(acc: dict[object, object], delta: dict[object, object]) -> dict[object, object]:
+    dict_type = dict
+    list_type = list
+    str_type = str
+    num_types = (int, float)
+    simple_types = (str, int, float)
+    index_type_keys = ("index", "type")
+
     for key, delta_value in delta.items():
+        # Fast path: Key not in accumulator
         if key not in acc:
             acc[key] = delta_value
             continue
@@ -14,31 +20,36 @@ def accumulate_delta(acc: dict[object, object], delta: dict[object, object]) -> 
             acc[key] = delta_value
             continue
 
-        # the `index` property is used in arrays of objects so it should
-        # not be accumulated like other values e.g.
-        # [{'foo': 'bar', 'index': 0}]
-        #
-        # the same applies to `type` properties as they're used for
-        # discriminated unions
-        if key == "index" or key == "type":
+        # `index` or `type` should not be accumulated
+        if key in index_type_keys:
             acc[key] = delta_value
             continue
 
-        if isinstance(acc_value, str) and isinstance(delta_value, str):
+        acc_type = type(acc_value)
+        delta_type = type(delta_value)
+
+        if acc_type is str_type and delta_type is str_type:
             acc_value += delta_value
-        elif isinstance(acc_value, (int, float)) and isinstance(delta_value, (int, float)):
+        elif acc_type in num_types and delta_type in num_types:
             acc_value += delta_value
-        elif is_dict(acc_value) and is_dict(delta_value):
+        # Inline isinstance, avoid helper call overhead
+        elif acc_type is dict_type and delta_type is dict_type:
             acc_value = accumulate_delta(acc_value, delta_value)
-        elif is_list(acc_value) and is_list(delta_value):
-            # for lists of non-dictionary items we'll only ever get new entries
-            # in the array, existing entries will never be changed
-            if all(isinstance(x, (str, int, float)) for x in acc_value):
+        elif acc_type is list_type and delta_type is list_type:
+            # Speed up: check type of first element only if present
+            # If all elements are simple types, batch extend
+            if acc_value:
+                first_simple_type = all(isinstance(x, simple_types) for x in acc_value)
+            else:
+                first_simple_type = True  # Empty lists are extendable
+
+            if first_simple_type:
                 acc_value.extend(delta_value)
                 continue
 
+            # Keep the logic in the original order for dicts in lists
             for delta_entry in delta_value:
-                if not is_dict(delta_entry):
+                if not isinstance(delta_entry, dict_type):
                     raise TypeError(f"Unexpected list delta entry is not a dictionary: {delta_entry}")
 
                 try:
@@ -54,9 +65,8 @@ def accumulate_delta(acc: dict[object, object], delta: dict[object, object]) -> 
                 except IndexError:
                     acc_value.insert(index, delta_entry)
                 else:
-                    if not is_dict(acc_entry):
+                    if not isinstance(acc_entry, dict_type):
                         raise TypeError("not handled yet")
-
                     acc_value[index] = accumulate_delta(acc_entry, delta_entry)
 
         acc[key] = acc_value
