@@ -64,7 +64,8 @@ class Querystring:
             array_format=array_format,
             nested_format=nested_format,
         )
-        return flatten([self._stringify_item(key, value, opts) for key, value in params.items()])
+        # Use generator expression for memory efficiency
+        return flatten(self._stringify_item(key, value, opts) for key, value in params.items())
 
     def _stringify_item(
         self,
