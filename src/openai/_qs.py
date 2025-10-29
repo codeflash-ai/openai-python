@@ -73,40 +73,57 @@ class Querystring:
         opts: Options,
     ) -> list[tuple[str, str]]:
         if isinstance(value, Mapping):
+            # Preallocate the stack, iterative approach for Mapping for speed
+            stack = [(key, value)]
             items: list[tuple[str, str]] = []
             nested_format = opts.nested_format
-            for subkey, subvalue in value.items():
-                items.extend(
-                    self._stringify_item(
-                        # TODO: error if unknown format
-                        f"{key}.{subkey}" if nested_format == "dots" else f"{key}[{subkey}]",
-                        subvalue,
-                        opts,
-                    )
-                )
+            while stack:
+                parent_key, mapping = stack.pop()
+                for subkey, subvalue in mapping.items():
+                    if isinstance(subvalue, Mapping):
+                        next_key = f"{parent_key}.{subkey}" if nested_format == "dots" else f"{parent_key}[{subkey}]"
+                        stack.append((next_key, subvalue))
+                    elif isinstance(subvalue, (list, tuple)):
+                        items.extend(
+                            self._stringify_item(
+                                f"{parent_key}.{subkey}" if nested_format == "dots" else f"{parent_key}[{subkey}]",
+                                subvalue,
+                                opts,
+                            )
+                        )
+                    else:
+                        serialised = self._primitive_value_to_str(subvalue)
+                        if serialised:
+                            next_key = (
+                                f"{parent_key}.{subkey}" if nested_format == "dots" else f"{parent_key}[{subkey}]"
+                            )
+                            items.append((next_key, serialised))
             return items
 
         if isinstance(value, (list, tuple)):
             array_format = opts.array_format
             if array_format == "comma":
+                # use list comprehension for speed, avoid generator overhead
                 return [
                     (
                         key,
-                        ",".join(self._primitive_value_to_str(item) for item in value if item is not None),
+                        ",".join([self._primitive_value_to_str(item) for item in value if item is not None]),
                     ),
                 ]
             elif array_format == "repeat":
+                # Avoid repeated list concatenations: use comprehension + extend
                 items = []
                 for item in value:
-                    items.extend(self._stringify_item(key, item, opts))
+                    items += self._stringify_item(key, item, opts)
                 return items
             elif array_format == "indices":
                 raise NotImplementedError("The array indices format is not supported yet")
             elif array_format == "brackets":
+                # Precompute new_key once
                 items = []
-                key = key + "[]"
+                new_key = key + "[]"
                 for item in value:
-                    items.extend(self._stringify_item(key, item, opts))
+                    items += self._stringify_item(new_key, item, opts)
                 return items
             else:
                 raise NotImplementedError(
