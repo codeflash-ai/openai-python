@@ -14,7 +14,18 @@ This feature requires additional dependencies:
 
 
 def format_instructions(*, library: str, extra: str) -> str:
-    return INSTRUCTIONS.format(library=library, extra=extra)
+    # Use f-string for more efficient string formatting
+    return f"""
+
+OpenAI error:
+
+    missing `{library}`
+
+This feature requires additional dependencies:
+
+    $ pip install openai[{extra}]
+
+"""
 
 
 class MissingDependencyError(OpenAIError):
