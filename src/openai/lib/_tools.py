@@ -34,7 +34,7 @@ class ResponsesPydanticFunctionTool(Dict[str, Any]):
         self.model = model
 
     def cast(self) -> ResponsesFunctionToolParam:
-        return cast(ResponsesFunctionToolParam, self)
+        return self  # type: ignore
 
 
 def pydantic_function_tool(
