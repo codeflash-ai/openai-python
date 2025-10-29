@@ -18,6 +18,8 @@ from .._models import BaseModel
 if TYPE_CHECKING:
     from argparse import _SubParsersAction
 
+_DEBUG_ENABLED = "DEBUG" in os.environ
+
 
 def register(subparser: _SubParsersAction[ArgumentParser]) -> None:
     sub = subparser.add_parser("migrate")
@@ -73,7 +75,7 @@ def _cache_dir() -> Path:
 
 
 def _debug(message: str) -> None:
-    if not os.environ.get("DEBUG"):
+    if not _DEBUG_ENABLED:
         return
 
     sys.stdout.write(f"[DEBUG]: {message}\n")
