@@ -318,7 +318,7 @@ def strip_not_given(obj: object | None) -> object:
 
 
 def coerce_integer(val: str) -> int:
-    return int(val, base=10)
+    return int(val)
 
 
 def coerce_float(val: str) -> float:
