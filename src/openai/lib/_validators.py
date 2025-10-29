@@ -132,15 +132,20 @@ def duplicated_rows_validator(df: pd.DataFrame, fields: list[str] = ["prompt", "
     """
     This validator will suggest to the user to remove duplicate rows if they exist.
     """
-    duplicated_rows = df.duplicated(subset=fields)
-    duplicated_indexes = df.reset_index().index[duplicated_rows].tolist()
+    # Optimize by avoiding the reset_index() operation (unnecessary for getting positional indexes)
+    duplicated_mask = df.duplicated(subset=fields)
+    # Using .nonzero()[0] is faster and uses less memory than index[mask].tolist()
+    duplicated_indexes = duplicated_mask.values.nonzero()[0].tolist()
     immediate_msg = None
     optional_msg = None
     optional_fn = None  # type: ignore
 
-    if len(duplicated_indexes) > 0:
-        immediate_msg = f"\n- There are {len(duplicated_indexes)} duplicated {'-'.join(fields)} sets. These are rows: {duplicated_indexes}"
-        optional_msg = f"Remove {len(duplicated_indexes)} duplicate rows"
+    if duplicated_indexes:
+        count = len(duplicated_indexes)
+        immediate_msg = (
+            f"\n- There are {count} duplicated {'-'.join(fields)} sets. These are rows: {duplicated_indexes}"
+        )
+        optional_msg = f"Remove {count} duplicate rows"
 
         def optional_fn(x: Any) -> Any:
             return x.drop_duplicates(subset=fields)
