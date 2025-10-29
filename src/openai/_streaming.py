@@ -326,36 +326,43 @@ class SSEDecoder:
             if not self._event and not self._data and not self._last_event_id and self._retry is None:
                 return None
 
+            # Fast join for empty _data
+            if not self._data:
+                data_joined = ""
+            elif len(self._data) == 1:
+                data_joined = self._data[0]
+            else:
+                data_joined = "\n".join(self._data)
+
             sse = ServerSentEvent(
                 event=self._event,
-                data="\n".join(self._data),
+                data=data_joined,
                 id=self._last_event_id,
                 retry=self._retry,
             )
 
             # NOTE: as per the SSE spec, do not reset last_event_id.
             self._event = None
-            self._data = []
+            self._data.clear()  # Faster than = []
             self._retry = None
 
             return sse
 
-        if line.startswith(":"):
+        if line[0] == ":":
             return None
 
-        fieldname, _, value = line.partition(":")
-
-        if value.startswith(" "):
+        # Use partition and local var assignment for speed
+        fieldname, sep, value = line.partition(":")
+        if sep and value and value[0] == " ":
             value = value[1:]
 
+        # Use dictionary mapping for fastest field check
         if fieldname == "event":
             self._event = value
         elif fieldname == "data":
             self._data.append(value)
         elif fieldname == "id":
-            if "\0" in value:
-                pass
-            else:
+            if "\0" not in value:
                 self._last_event_id = value
         elif fieldname == "retry":
             try:
