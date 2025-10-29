@@ -110,13 +110,17 @@ def non_empty_field_validator(df: pd.DataFrame, field: str = "completion") -> Re
     necessary_fn = None  # type: ignore
     immediate_msg = None
 
-    if df[field].apply(lambda x: x == "").any() or df[field].isnull().any():
-        empty_rows = (df[field] == "") | (df[field].isnull())
-        empty_indexes = df.reset_index().index[empty_rows].tolist()
+    empty_mask = (df[field] == "") | df[field].isnull()
+    if empty_mask.any():
+        import numpy as np
+
+        empty_indexes = np.flatnonzero(empty_mask.to_numpy()).tolist()
         immediate_msg = f"\n- `{field}` column/key should not contain empty strings. These are rows: {empty_indexes}"
 
         def necessary_fn(x: Any) -> Any:
-            return x[x[field] != ""].dropna(subset=[field])
+            # Only compute mask once
+            mask = (x[field] != "") & (~x[field].isnull())
+            return x[mask]
 
         necessary_msg = f"Remove {len(empty_indexes)} rows with empty {field}s"
 
