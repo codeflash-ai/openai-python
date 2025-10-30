@@ -774,10 +774,16 @@ def async_to_raw_response_wrapper(func: Callable[P, Awaitable[R]]) -> Callable[P
 
     @functools.wraps(func)
     async def wrapped(*args: P.args, **kwargs: P.kwargs) -> AsyncAPIResponse[R]:
-        extra_headers: dict[str, str] = {**(cast(Any, kwargs.get("extra_headers")) or {})}
-        extra_headers[RAW_RESPONSE_HEADER] = "raw"
+        # Avoid unnecessary copy if possible
+        extra_headers = kwargs.get("extra_headers")
+        if extra_headers is None:
+            headers: dict[str, str] = {RAW_RESPONSE_HEADER: "raw"}
+        else:
+            # Avoid use of cast(Any, ...) since type info is lost anyway
+            headers = dict(extra_headers)
+            headers[RAW_RESPONSE_HEADER] = "raw"
 
-        kwargs["extra_headers"] = extra_headers
+        kwargs["extra_headers"] = headers
 
         return cast(AsyncAPIResponse[R], await func(*args, **kwargs))
 
