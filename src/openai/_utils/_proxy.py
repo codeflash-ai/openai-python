@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Generic, TypeVar, Iterable, cast
+from typing import Generic, TypeVar, Iterable
 from typing_extensions import override
 
 T = TypeVar("T")
@@ -59,7 +59,7 @@ class LazyProxy(Generic[T], ABC):
 
     def __as_proxied__(self) -> T:
         """Helper method that returns the current proxy, typed as the loaded object"""
-        return cast(T, self)
+        return self  # type: ignore
 
     @abstractmethod
     def __load__(self) -> T: ...
