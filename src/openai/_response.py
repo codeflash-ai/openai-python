@@ -796,7 +796,12 @@ def to_custom_raw_response_wrapper(
 
     @functools.wraps(func)
     def wrapped(*args: P.args, **kwargs: P.kwargs) -> _APIResponseT:
-        extra_headers: dict[str, Any] = {**(cast(Any, kwargs.get("extra_headers")) or {})}
+        extra_headers = kwargs.get("extra_headers")
+        if extra_headers is None:
+            extra_headers = {}
+        elif type(extra_headers) is not dict:
+            extra_headers = dict(extra_headers)
+
         extra_headers[RAW_RESPONSE_HEADER] = "raw"
         extra_headers[OVERRIDE_CAST_TO_HEADER] = response_cls
 
