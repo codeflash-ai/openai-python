@@ -30,10 +30,7 @@ class SyncPage(BaseSyncPage[_T], BasePage[_T], Generic[_T]):
 
     @override
     def _get_page_items(self) -> List[_T]:
-        data = self.data
-        if not data:
-            return []
-        return data
+        return self.data if self.data else []
 
     @override
     def next_page_info(self) -> None:
