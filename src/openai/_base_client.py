@@ -1861,11 +1861,12 @@ def make_request_options(
     if extra_body is not None:
         options["extra_json"] = cast(AnyMapping, extra_body)
 
-    if query is not None:
+    if query is not None and extra_query is not None:
+        options["params"] = {**query, **extra_query}
+    elif query is not None:
         options["params"] = query
-
-    if extra_query is not None:
-        options["params"] = {**options.get("params", {}), **extra_query}
+    elif extra_query is not None:
+        options["params"] = extra_query
 
     if not isinstance(timeout, NotGiven):
         options["timeout"] = timeout
@@ -1873,7 +1874,7 @@ def make_request_options(
     if idempotency_key is not None:
         options["idempotency_key"] = idempotency_key
 
-    if is_given(post_parser):
+    if not isinstance(post_parser, NotGiven) and not isinstance(post_parser, Omit):
         # internal
         options["post_parser"] = post_parser  # type: ignore
 
