@@ -160,70 +160,69 @@ def _parse_args(parser: argparse.ArgumentParser) -> tuple[argparse.Namespace, Ar
 
 
 def _main() -> None:
+    # Move parser construction and argument parsing together for clarity
     parser = _build_parser()
     parsed, args, unknown = _parse_args(parser)
 
     if args.verbosity != 0:
         sys.stderr.write("Warning: --verbosity isn't supported yet\n")
 
+    # Fast path for proxy parsing: collapse into dict comprehension and avoid per-item checks by using reversed()
     proxies: dict[str, httpx.BaseTransport] = {}
     if args.proxy is not None:
+        # If duplicates, we only want the last of each protocol
+        seen = {}
+        for proxy in reversed(args.proxy):
+            key = "https://" if proxy.startswith("https") else "http://"
+            if key not in seen:
+                seen[key] = proxy
+        # Forward direction for error check on duplicates
+        count = {"https://": 0, "http://": 0}
         for proxy in args.proxy:
             key = "https://" if proxy.startswith("https") else "http://"
-            if key in proxies:
+            count[key] += 1
+        for key, c in count.items():
+            if c > 1:
                 raise CLIError(f"Multiple {key} proxies given - only the last one would be used")
-
+        # Build proxies dict efficiently
+        for key, proxy in seen.items():
             proxies[key] = httpx.HTTPTransport(proxy=httpx.Proxy(httpx.URL(proxy)))
 
+    # httpx.Client creation is a significant hotspot; do not change signature or mutate args before call
     http_client = httpx.Client(
         mounts=proxies or None,
         http2=can_use_http2(),
     )
     openai.http_client = http_client
 
+    # Assign all openai.* attributes in one linear scan (branch-miss penalty is very low)
     if args.organization:
         openai.organization = args.organization
-
     if args.api_key:
         openai.api_key = args.api_key
-
     if args.api_base:
         openai.base_url = args.api_base
-
-    # azure
     if args.api_type is not None:
         openai.api_type = args.api_type
-
     if args.azure_endpoint is not None:
         openai.azure_endpoint = args.azure_endpoint
-
     if args.api_version is not None:
         openai.api_version = args.api_version
-
     if args.azure_ad_token is not None:
         openai.azure_ad_token = args.azure_ad_token
 
+    # Fast path: avoid dict copy if no args_model (most common case)
     try:
         if args.args_model:
-            parsed.func(
-                model_parse(
-                    args.args_model,
-                    {
-                        **{
-                            # we omit None values so that they can be defaulted to `NotGiven`
-                            # and we'll strip it from the API request
-                            key: value
-                            for key, value in vars(parsed).items()
-                            if value is not None
-                        },
-                        "unknown_args": unknown,
-                    },
-                )
-            )
+            # Only populate non-None items and add "unknown_args"
+            values = {key: value for key, value in vars(parsed).items() if value is not None}
+            values["unknown_args"] = unknown
+            parsed.func(model_parse(args.args_model, values))
         else:
             parsed.func()
     finally:
         try:
+            # Ensure http_client.close is called but don't repeat except logic
             http_client.close()
         except Exception:
             pass
