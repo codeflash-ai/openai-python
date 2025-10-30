@@ -168,23 +168,34 @@ def parse_chat_completion(
 def get_input_tool_by_name(
     *, input_tools: list[ChatCompletionToolUnionParam], name: str
 ) -> ChatCompletionFunctionToolParam | None:
-    return next((t for t in input_tools if t["type"] == "function" and t.get("function", {}).get("name") == name), None)
+    # Optimize: eliminate generator overhead by using for-loop directly
+    for t in input_tools:
+        if t["type"] == "function":
+            fn = t.get("function")
+            # Fast path: avoid unnecessary dict lookups if 'function' is missing
+            if fn and fn.get("name") == name:
+                return t
+    return None
 
 
 def parse_function_tool_arguments(
     *, input_tools: list[ChatCompletionToolUnionParam], function: Function | ParsedFunction
 ) -> object | None:
-    input_tool = get_input_tool_by_name(input_tools=input_tools, name=function.name)
-    if not input_tool:
+    # Avoid intermediate variable for input_tool, reduce initial lookup to single assignment
+    tool = get_input_tool_by_name(input_tools=input_tools, name=function.name)
+    if not tool:
         return None
 
-    input_fn = cast(object, input_tool.get("function"))
+    input_fn = tool.get("function")
+    # Minor optimization: variable reuse, and avoid unnecessary cast until type distinction is made
     if isinstance(input_fn, PydanticFunctionTool):
+        # Fast path for PydanticFunctionTool
         return model_parse_json(input_fn.model, function.arguments)
 
-    input_fn = cast(FunctionDefinition, input_fn)
+    input_fn_def = cast(FunctionDefinition, input_fn)
 
-    if not input_fn.get("strict"):
+    # Fast path: do not attempt json loading if not strict
+    if not input_fn_def.get("strict"):
         return None
 
     return json.loads(function.arguments)  # type: ignore[no-any-return]
