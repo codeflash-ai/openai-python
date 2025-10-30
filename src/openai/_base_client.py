@@ -1969,7 +1969,7 @@ class OtherArch:
 
     @override
     def __str__(self) -> str:
-        return f"other:{self.name}"
+        return "other:" + self.name
 
 
 Arch = Union[OtherArch, Literal["x32", "x64", "arm", "arm64", "unknown"]]
