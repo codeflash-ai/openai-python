@@ -8,6 +8,7 @@ from __future__ import annotations
 import re
 from typing import Dict, Union, Optional
 from datetime import date, datetime, timezone, timedelta
+from functools import lru_cache
 
 from .._types import StrBytesIntFloat
 
@@ -31,13 +32,27 @@ MAX_NUMBER = int(3e20)
 
 
 def _get_numeric(value: StrBytesIntFloat, native_expected_type: str) -> Union[None, int, float]:
+    # Small local variable for faster lookup in exceptions
+    type_err = TypeError
+    val_err = ValueError
+    float_cast = float
+
     if isinstance(value, (int, float)):
         return value
+
+    # Fast path checks for bytes and str types to avoid try/except overhead on non-castable types
+    if isinstance(value, (bytes, str)):
+        try:
+            return float_cast(value)
+        except val_err:
+            return None
+
+    # At this point, only unexpected types will reach here
     try:
-        return float(value)
-    except ValueError:
+        return float_cast(value)
+    except val_err:
         return None
-    except TypeError:
+    except type_err:
         raise TypeError(f"invalid type; expected {native_expected_type}, string, bytes, int or float") from None
 
 
@@ -121,16 +136,27 @@ def parse_date(value: Union[date, StrBytesIntFloat]) -> date:
         return _from_unix_seconds(number).date()
 
     if isinstance(value, bytes):
-        value = value.decode()
+        # Faster, assume ASCII for valid date representations
+        value = value.decode("ascii")
 
     assert not isinstance(value, (float, int))
-    match = date_re.match(value)
+
+    # Use regex cache for string input
+    match = _cached_match_date_re(value)
     if match is None:
         raise ValueError("invalid date format")
 
-    kw = {k: int(v) for k, v in match.groupdict().items()}
-
+    # Group extraction without dictionary comprehension loop
     try:
-        return date(**kw)
-    except ValueError:
+        year = int(match.group("year"))
+        month = int(match.group("month"))
+        day = int(match.group("day"))
+        return date(year, month, day)
+    except (ValueError, IndexError, AttributeError):
         raise ValueError("invalid date format") from None
+
+
+# Fast LRU cache for repeated date string regex matches
+@lru_cache(maxsize=1024)
+def _cached_match_date_re(value: str):
+    return date_re.match(value)
