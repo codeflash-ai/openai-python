@@ -1995,15 +1995,15 @@ def get_architecture() -> Arch:
     except Exception:
         return "unknown"
 
+    if machine == "x86_64":
+        return "x64"
+
     if machine in ("arm64", "aarch64"):
         return "arm64"
 
     # TODO: untested
     if machine == "arm":
         return "arm"
-
-    if machine == "x86_64":
-        return "x64"
 
     # TODO: untested
     if sys.maxsize <= 2**32:
