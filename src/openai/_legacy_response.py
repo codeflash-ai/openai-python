@@ -421,7 +421,7 @@ class HttpxBinaryResponseContent:
         return self.response.iter_lines()
 
     def iter_raw(self, chunk_size: int | None = None) -> Iterator[bytes]:
-        return self.response.iter_raw(chunk_size)
+        yield from self.response.iter_raw(chunk_size)
 
     def write_to_file(
         self,
