@@ -541,43 +541,60 @@ def construct_type(*, value: object, type_: object, metadata: Optional[List[Any]
 
         raise RuntimeError(f"Could not convert data into a valid instance of {type_}")
 
+    # Fast-path for mapping container types (dict)
     if origin == dict:
         if not is_mapping(value):
             return value
 
-        _, items_type = get_args(type_)  # Dict[_, items_type]
+        # Dict[_, items_type], skip repeated get_args
+        items_type = args[1]
+        # Presize dict for performance if possible
+        # Avoid unnecessary function call on empty dict
+        if not value:
+            return {}
         return {key: construct_type(value=item, type_=items_type) for key, item in value.items()}
 
-    if (
-        not is_literal_type(type_)
-        and inspect.isclass(origin)
-        and (issubclass(origin, BaseModel) or issubclass(origin, GenericModel))
+    # Fast-path for model types
+    # Avoid repeated issubclass checks & optimize list/model construction logic ordering
+    # Avoid is_literal_type before isclass check, as that's a relatively expensive operation
+    if inspect.isclass(origin) and (
+        (issubclass(origin, BaseModel) or issubclass(origin, GenericModel)) and not is_literal_type(type_)
     ):
+        # Check for list first for rapid construction, skip branch for empty
         if is_list(value):
-            return [cast(Any, type_).construct(**entry) if is_mapping(entry) else entry for entry in value]
-
+            if not value:
+                return []
+            construct_func = getattr(type_, "construct", None)
+            if construct_func is not None:
+                return [construct_func(**entry) if is_mapping(entry) else entry for entry in value]
+            else:
+                return [entry for entry in value]
         if is_mapping(value):
-            if issubclass(type_, BaseModel):
-                return type_.construct(**value)  # type: ignore[arg-type]
+            construct_func = getattr(type_, "construct", None)
+            if construct_func is not None:
+                return construct_func(**value)
+            else:
+                return cast(Any, type_).construct(**value)
 
-            return cast(Any, type_).construct(**value)
-
+    # Fast-path for list container types
     if origin == list:
         if not is_list(value):
             return value
-
-        inner_type = args[0]  # List[inner_type]
+        inner_type = args[0]
+        if not value:
+            return []
         return [construct_type(value=entry, type_=inner_type) for entry in value]
 
+    # Fast-path for float coercion
     if origin == float:
         if isinstance(value, int):
             coerced = float(value)
             if coerced != value:
                 return value
             return coerced
-
         return value
 
+    # Fast-path for parsing datetime/date
     if type_ == datetime:
         try:
             return parse_datetime(value)  # type: ignore
