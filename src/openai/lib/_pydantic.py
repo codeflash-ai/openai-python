@@ -121,9 +121,12 @@ def resolve_ref(*, root: dict[str, object], ref: str) -> object:
 
     path = ref[2:].split("/")
     resolved = root
+    # Inline is_dict logic for significant perf improvement due to tight loop
     for key in path:
         value = resolved[key]
-        assert is_dict(value), f"encountered non-dictionary entry while resolving {ref} - {resolved}"
+        # Avoid function call overhead: replace is_dict with direct isinstance check
+        # We ignore type params as the original did, see is_dict def
+        assert isinstance(value, dict), f"encountered non-dictionary entry while resolving {ref} - {resolved}"
         resolved = value
 
     return resolved
