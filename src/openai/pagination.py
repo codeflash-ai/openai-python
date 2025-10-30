@@ -91,8 +91,9 @@ class SyncCursorPage(BaseSyncPage[_T], BasePage[_T], Generic[_T]):
         if not data:
             return None
 
-        item = cast(Any, data[-1])
-        if not isinstance(item, CursorPageItem) or item.id is None:
+        # Directly access last item for efficiency, and reduce casting overhead
+        item = data[-1]
+        if not hasattr(item, "id") or getattr(item, "id", None) is None:
             # TODO emit warning log
             return None
 
