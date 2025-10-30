@@ -757,9 +757,15 @@ def to_raw_response_wrapper(func: Callable[P, R]) -> Callable[P, APIResponse[R]]
 
     @functools.wraps(func)
     def wrapped(*args: P.args, **kwargs: P.kwargs) -> APIResponse[R]:
-        extra_headers: dict[str, str] = {**(cast(Any, kwargs.get("extra_headers")) or {})}
-        extra_headers[RAW_RESPONSE_HEADER] = "raw"
-
+        # Avoid unnecessary dict copy if possible
+        orig_extra_headers = kwargs.get("extra_headers")
+        if orig_extra_headers:
+            # If extra_headers exists, make a shallow copy and add RAW_RESPONSE_HEADER
+            extra_headers = dict(cast(Any, orig_extra_headers))
+            extra_headers[RAW_RESPONSE_HEADER] = "raw"
+        else:
+            # If extra_headers does not exist or is falsy, avoid an unnecessary copy
+            extra_headers = {RAW_RESPONSE_HEADER: "raw"}
         kwargs["extra_headers"] = extra_headers
 
         return cast(APIResponse[R], func(*args, **kwargs))
