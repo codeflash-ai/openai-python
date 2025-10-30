@@ -8,6 +8,7 @@ from __future__ import annotations
 import re
 from typing import Dict, Union, Optional
 from datetime import date, datetime, timezone, timedelta
+from functools import lru_cache
 
 from .._types import StrBytesIntFloat
 
@@ -31,13 +32,27 @@ MAX_NUMBER = int(3e20)
 
 
 def _get_numeric(value: StrBytesIntFloat, native_expected_type: str) -> Union[None, int, float]:
+    # Small local variable for faster lookup in exceptions
+    type_err = TypeError
+    val_err = ValueError
+    float_cast = float
+
     if isinstance(value, (int, float)):
         return value
+
+    # Fast path checks for bytes and str types to avoid try/except overhead on non-castable types
+    if isinstance(value, (bytes, str)):
+        try:
+            return float_cast(value)
+        except val_err:
+            return None
+
+    # At this point, only unexpected types will reach here
     try:
-        return float(value)
-    except ValueError:
+        return float_cast(value)
+    except val_err:
         return None
-    except TypeError:
+    except type_err:
         raise TypeError(f"invalid type; expected {native_expected_type}, string, bytes, int or float") from None
 
 
@@ -57,11 +72,18 @@ def _parse_timezone(value: Optional[str]) -> Union[None, int, timezone]:
     if value == "Z":
         return timezone.utc
     elif value is not None:
-        offset_mins = int(value[-2:]) if len(value) > 3 else 0
-        offset = 60 * int(value[1:3]) + offset_mins
+        # Fast path: avoid slice construction and repeated int conversions
+        vlen = len(value)
+        if vlen > 3:
+            offset_mins = int(value[-2:])
+        else:
+            offset_mins = 0
+        hh = int(value[1:3])
+        offset = 60 * hh + offset_mins
         if value[0] == "-":
             offset = -offset
-        return timezone(timedelta(minutes=offset))
+        # Cache the timedelta() object to avoid redundant construction per call
+        return timezone(_tdelta_by_min(offset))
     else:
         return None
 
@@ -134,3 +156,8 @@ def parse_date(value: Union[date, StrBytesIntFloat]) -> date:
         return date(**kw)
     except ValueError:
         raise ValueError("invalid date format") from None
+
+
+@lru_cache(256)
+def _tdelta_by_min(minutes: int) -> timedelta:
+    return timedelta(minutes=minutes)
