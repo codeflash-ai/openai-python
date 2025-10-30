@@ -250,11 +250,14 @@ def is_parseable_tool(input_tool: ChatCompletionToolUnionParam) -> bool:
     if input_tool["type"] != "function":
         return False
 
-    input_fn = cast(object, input_tool.get("function"))
+    input_fn = input_tool.get("function")
     if isinstance(input_fn, PydanticFunctionTool):
         return True
 
-    return cast(FunctionDefinition, input_fn).get("strict") or False
+    try:
+        return input_fn.get("strict", False)
+    except AttributeError:
+        return cast(FunctionDefinition, input_fn).get("strict", False)
 
 
 def _parse_content(response_format: type[ResponseFormatT], content: str) -> ResponseFormatT:
