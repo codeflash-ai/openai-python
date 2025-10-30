@@ -698,30 +698,29 @@ class BaseClient(Generic[_HttpxClientT, _DefaultStreamT]):
         if response_headers is None:
             return None
 
-        # First, try the non-standard `retry-after-ms` header for milliseconds,
-        # which is more precise than integer-seconds `retry-after`
-        try:
-            retry_ms_header = response_headers.get("retry-after-ms", None)
-            return float(retry_ms_header) / 1000
-        except (TypeError, ValueError):
-            pass
+        # Try the non-standard `retry-after-ms` header for milliseconds (more precise)
+        retry_ms_header = response_headers.get("retry-after-ms")
+        if retry_ms_header is not None:
+            try:
+                return float(retry_ms_header) / 1000
+            except (TypeError, ValueError):
+                pass
 
-        # Next, try parsing `retry-after` header as seconds (allowing nonstandard floats).
+        # Try parsing `retry-after` header as seconds (allowing nonstandard floats)
         retry_header = response_headers.get("retry-after")
-        try:
-            # note: the spec indicates that this should only ever be an integer
-            # but if someone sends a float there's no reason for us to not respect it
-            return float(retry_header)
-        except (TypeError, ValueError):
-            pass
+        if retry_header is not None:
+            try:
+                return float(retry_header)
+            except (TypeError, ValueError):
+                pass
 
-        # Last, try parsing `retry-after` as a date.
-        retry_date_tuple = email.utils.parsedate_tz(retry_header)
-        if retry_date_tuple is None:
-            return None
+            # Try parsing `retry-after` as a date ONLY if it's not a valid float
+            retry_date_tuple = email.utils.parsedate_tz(retry_header)
+            if retry_date_tuple is not None:
+                retry_date = email.utils.mktime_tz(retry_date_tuple)
+                return float(retry_date - time.time())
 
-        retry_date = email.utils.mktime_tz(retry_date_tuple)
-        return float(retry_date - time.time())
+        return None
 
     def _calculate_retry_timeout(
         self,
