@@ -6,7 +6,7 @@ without the Pydantic v1 specific errors.
 from __future__ import annotations
 
 import re
-from typing import Dict, Union, Optional
+from typing import Union, Optional
 from datetime import date, datetime, timezone, timedelta
 
 from .._types import StrBytesIntFloat
@@ -31,13 +31,27 @@ MAX_NUMBER = int(3e20)
 
 
 def _get_numeric(value: StrBytesIntFloat, native_expected_type: str) -> Union[None, int, float]:
+    # Small local variable for faster lookup in exceptions
+    type_err = TypeError
+    val_err = ValueError
+    float_cast = float
+
     if isinstance(value, (int, float)):
         return value
+
+    # Fast path checks for bytes and str types to avoid try/except overhead on non-castable types
+    if isinstance(value, (bytes, str)):
+        try:
+            return float_cast(value)
+        except val_err:
+            return None
+
+    # At this point, only unexpected types will reach here
     try:
-        return float(value)
-    except ValueError:
+        return float_cast(value)
+    except val_err:
         return None
-    except TypeError:
+    except type_err:
         raise TypeError(f"invalid type; expected {native_expected_type}, string, bytes, int or float") from None
 
 
@@ -69,38 +83,43 @@ def _parse_timezone(value: Optional[str]) -> Union[None, int, timezone]:
 def parse_datetime(value: Union[datetime, StrBytesIntFloat]) -> datetime:
     """
     Parse a datetime/int/float/string and return a datetime.datetime.
-
     This function supports time zone offsets. When the input contains one,
     the output uses a timezone with a fixed offset from UTC.
-
     Raise ValueError if the input is well formatted but not a valid datetime.
     Raise ValueError if the input isn't well formatted.
     """
     if isinstance(value, datetime):
         return value
-
     number = _get_numeric(value, "datetime")
     if number is not None:
         return _from_unix_seconds(number)
-
     if isinstance(value, bytes):
         value = value.decode()
-
     assert not isinstance(value, (float, int))
-
     match = datetime_re.match(value)
     if match is None:
         raise ValueError("invalid datetime format")
 
-    kw = match.groupdict()
-    if kw["microsecond"]:
-        kw["microsecond"] = kw["microsecond"].ljust(6, "0")
+    # Direct extraction to minimize dict allocations and .items() iteration
+    gd = match.groupdict()
+    year = int(gd["year"])
+    month = int(gd["month"])
+    day = int(gd["day"])
+    hour = int(gd["hour"])
+    minute = int(gd["minute"])
 
-    tzinfo = _parse_timezone(kw.pop("tzinfo"))
-    kw_: Dict[str, Union[None, int, timezone]] = {k: int(v) for k, v in kw.items() if v is not None}
-    kw_["tzinfo"] = tzinfo
+    # microsecond padding only if present
+    microsecond_str = gd["microsecond"]
+    if microsecond_str:
+        microsecond = int(microsecond_str.ljust(6, "0"))
+    else:
+        microsecond = 0
 
-    return datetime(**kw_)  # type: ignore
+    second = int(gd["second"]) if gd["second"] else 0
+
+    tzinfo = _parse_timezone(gd["tzinfo"])
+
+    return datetime(year, month, day, hour, minute, second, microsecond, tzinfo=tzinfo)
 
 
 def parse_date(value: Union[date, StrBytesIntFloat]) -> date:
