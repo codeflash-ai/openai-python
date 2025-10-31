@@ -320,13 +320,13 @@ class ChatCompletionStreamState(Generic[ResponseFormatT]):
         self.__current_completion_snapshot: ParsedChatCompletionSnapshot | None = None
         self.__choice_event_states: list[ChoiceEventState] = []
 
-        self._input_tools = [tool for tool in input_tools] if is_given(input_tools) else []
+        # Minor in-place optimization by directly using list(), avoids overhead of list comprehension
+        self._input_tools = list(input_tools) if is_given(input_tools) else []
         self._response_format = response_format
         self._rich_response_format: type | Omit = response_format if inspect.isclass(response_format) else omit
 
     def get_final_completion(self) -> ParsedChatCompletion[ResponseFormatT]:
         """Parse the final completion object.
-
         Note this does not provide any guarantees that the stream has actually finished, you must
         only call this method when the stream is finished.
         """

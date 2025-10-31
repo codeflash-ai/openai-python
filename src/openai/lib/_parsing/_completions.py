@@ -89,42 +89,40 @@ def parse_chat_completion(
     input_tools: Iterable[ChatCompletionToolUnionParam] | Omit,
     chat_completion: ChatCompletion | ParsedChatCompletion[object],
 ) -> ParsedChatCompletion[ResponseFormatT]:
-    if is_given(input_tools):
-        input_tools = [t for t in input_tools]
-    else:
-        input_tools = []
-
+    input_tools_list = list(input_tools) if is_given(input_tools) else []
     choices: list[ParsedChoice[ResponseFormatT]] = []
+    solve_fmt = solve_response_format_t(response_format)
+    parsed_choice_type = cast(Any, ParsedChoice)[solve_fmt]
+    parsed_completion_type = cast(Any, ParsedChatCompletion)[solve_fmt]
     for choice in chat_completion.choices:
         if choice.finish_reason == "length":
             raise LengthFinishReasonError(completion=chat_completion)
-
         if choice.finish_reason == "content_filter":
             raise ContentFilterFinishReasonError()
-
         message = choice.message
-
         tool_calls: list[ParsedFunctionToolCall] = []
         if message.tool_calls:
             for tool_call in message.tool_calls:
-                if tool_call.type == "function":
+                tc_type = tool_call.type
+                if tc_type == "function":
                     tool_call_dict = tool_call.to_dict()
+                    function_dict = cast(Any, tool_call_dict["function"])
+                    parsed_arguments = parse_function_tool_arguments(
+                        input_tools=input_tools_list, function=tool_call.function
+                    )
                     tool_calls.append(
                         construct_type_unchecked(
                             value={
                                 **tool_call_dict,
                                 "function": {
-                                    **cast(Any, tool_call_dict["function"]),
-                                    "parsed_arguments": parse_function_tool_arguments(
-                                        input_tools=input_tools, function=tool_call.function
-                                    ),
+                                    **function_dict,
+                                    "parsed_arguments": parsed_arguments,
                                 },
                             },
                             type_=ParsedFunctionToolCall,
                         )
                     )
-                elif tool_call.type == "custom":
-                    # warn user that custom tool calls are not callable here
+                elif tc_type == "custom":
                     log.warning(
                         "Custom tool calls are not callable. Ignoring tool call: %s - %s",
                         tool_call.id,
@@ -136,31 +134,35 @@ def parse_chat_completion(
                 else:
                     tool_calls.append(tool_call)
 
+        msg_dict = message.to_dict()
+        msg_dict_with_parsed = {
+            **msg_dict,
+            "parsed": maybe_parse_content(
+                response_format=response_format,
+                message=message,
+            ),
+            "tool_calls": tool_calls if tool_calls else None,
+        }
+        choice_dict = {
+            **choice.to_dict(),
+            "message": msg_dict_with_parsed,
+        }
         choices.append(
             construct_type_unchecked(
-                type_=cast(Any, ParsedChoice)[solve_response_format_t(response_format)],
-                value={
-                    **choice.to_dict(),
-                    "message": {
-                        **message.to_dict(),
-                        "parsed": maybe_parse_content(
-                            response_format=response_format,
-                            message=message,
-                        ),
-                        "tool_calls": tool_calls if tool_calls else None,
-                    },
-                },
+                type_=parsed_choice_type,
+                value=choice_dict,
             )
         )
 
+    chat_completion_dict = {
+        **chat_completion.to_dict(),
+        "choices": choices,
+    }
     return cast(
         ParsedChatCompletion[ResponseFormatT],
         construct_type_unchecked(
-            type_=cast(Any, ParsedChatCompletion)[solve_response_format_t(response_format)],
-            value={
-                **chat_completion.to_dict(),
-                "choices": choices,
-            },
+            type_=parsed_completion_type,
+            value=chat_completion_dict,
         ),
     )
 
