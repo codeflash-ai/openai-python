@@ -31,13 +31,27 @@ MAX_NUMBER = int(3e20)
 
 
 def _get_numeric(value: StrBytesIntFloat, native_expected_type: str) -> Union[None, int, float]:
+    # Small local variable for faster lookup in exceptions
+    type_err = TypeError
+    val_err = ValueError
+    float_cast = float
+
     if isinstance(value, (int, float)):
         return value
+
+    # Fast path checks for bytes and str types to avoid try/except overhead on non-castable types
+    if isinstance(value, (bytes, str)):
+        try:
+            return float_cast(value)
+        except val_err:
+            return None
+
+    # At this point, only unexpected types will reach here
     try:
-        return float(value)
-    except ValueError:
+        return float_cast(value)
+    except val_err:
         return None
-    except TypeError:
+    except type_err:
         raise TypeError(f"invalid type; expected {native_expected_type}, string, bytes, int or float") from None
 
 
@@ -128,9 +142,11 @@ def parse_date(value: Union[date, StrBytesIntFloat]) -> date:
     if match is None:
         raise ValueError("invalid date format")
 
-    kw = {k: int(v) for k, v in match.groupdict().items()}
-
     try:
-        return date(**kw)
+        return date(
+            int(match.group("year")),
+            int(match.group("month")),
+            int(match.group("day")),
+        )
     except ValueError:
         raise ValueError("invalid date format") from None
